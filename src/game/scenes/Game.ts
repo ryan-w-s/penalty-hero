@@ -6,6 +6,7 @@ import {
     deserializeRun,
     resolvePlayerShot,
     resolveShootoutRound,
+    simulateOpponentPenalty,
     serializeRun,
     type Country,
     type RunState,
@@ -26,16 +27,19 @@ export class Game extends Scene {
     private phase: Phase = 'menu';
     private run?: RunState;
     private playerGoals: boolean[] = [];
+    private opponentGoals: boolean[] = [];
     private shotNumber = 0;
     private aim = 0;
+    private height = 0.56;
     private power = 0.5;
     private curve = 0;
-    private aimDir = 1;
     private powerDir = 1;
     private curveDir = 1;
     private lastMessage = '';
     private awaitingRetry = false;
     private spaceKey?: Phaser.Input.Keyboard.Key;
+    private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
+    private keys?: Record<string, Phaser.Input.Keyboard.Key>;
     private ball?: Phaser.GameObjects.Arc;
     private keeper?: Phaser.GameObjects.Container;
     private ui: Phaser.GameObjects.GameObject[] = [];
@@ -46,8 +50,15 @@ export class Game extends Scene {
 
     create() {
         this.spaceKey = this.input.keyboard?.addKey('SPACE');
+        this.cursors = this.input.keyboard?.createCursorKeys();
+        this.keys = this.input.keyboard?.addKeys('W,A,S,D') as Record<string, Phaser.Input.Keyboard.Key> | undefined;
         this.input.keyboard?.addKey('ENTER').on('down', () => this.handleConfirm());
-        this.input.on('pointerdown', () => this.handleConfirm());
+        this.input.keyboard?.addCapture('SPACE,UP,DOWN,LEFT,RIGHT,W,A,S,D,ENTER');
+        this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => this.handlePointerMove(pointer));
+        this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+            if (this.phase === 'aim') this.handlePointerMove(pointer);
+            this.handleConfirm();
+        });
         this.showMenu();
     }
 
@@ -56,30 +67,26 @@ export class Game extends Scene {
         const speed = this.run?.stats.aimSpeed ?? 1;
 
         if (this.phase === 'aim') {
-            this.aim += this.aimDir * step * 1.55 * speed;
-            if (this.aim > 1 || this.aim < -1) {
-                this.aim = Math.max(-1, Math.min(1, this.aim));
-                this.aimDir *= -1;
-            }
-            this.drawMeters();
+            this.updateAimInput(step);
+            this.drawShotHud();
         }
 
         if (this.phase === 'power') {
-            this.power += this.powerDir * step * 1.35 * speed;
+            this.power += this.powerDir * step * 3.15 * speed;
             if (this.power > 1 || this.power < 0.15) {
                 this.power = Math.max(0.15, Math.min(1, this.power));
                 this.powerDir *= -1;
             }
-            this.drawMeters();
+            this.drawShotHud();
         }
 
         if (this.phase === 'curve') {
-            this.curve += this.curveDir * step * 1.75 * speed;
+            this.curve += this.curveDir * step * 3.45 * speed;
             if (this.curve > 1 || this.curve < -1) {
                 this.curve = Math.max(-1, Math.min(1, this.curve));
                 this.curveDir *= -1;
             }
-            this.drawMeters();
+            this.drawShotHud();
         }
 
         if (this.spaceKey && Input.Keyboard.JustDown(this.spaceKey)) this.handleConfirm();
@@ -148,14 +155,16 @@ export class Game extends Scene {
 
     private startShootout() {
         this.playerGoals = [];
+        this.opponentGoals = [];
         this.shotNumber = 0;
-        this.lastMessage = 'Place your shot. Tap or press Space to lock direction.';
+        this.lastMessage = 'Move the target. Corners are risky, center is safer.';
         this.nextShot();
     }
 
     private nextShot() {
         this.shotNumber += 1;
         this.aim = 0;
+        this.height = 0.56;
         this.power = 0.5;
         this.curve = 0;
         this.awaitingRetry = false;
@@ -166,14 +175,14 @@ export class Game extends Scene {
     private handleConfirm() {
         if (this.phase === 'aim') {
             this.phase = 'power';
-            this.lastMessage = 'Lock power.';
+            this.lastMessage = 'Stop power in the green strike zone.';
             this.drawPlayfield();
             return;
         }
 
         if (this.phase === 'power') {
             this.phase = 'curve';
-            this.lastMessage = 'Optional curve. Center is safer, edges bend harder.';
+            this.lastMessage = 'Stop curve near center for safe, edges for bend.';
             this.drawPlayfield();
             return;
         }
@@ -192,13 +201,15 @@ export class Game extends Scene {
     private takeShot() {
         if (!this.run) return;
         this.phase = 'flight';
-        const accuracy = 1 - Math.abs(this.aim) * 0.12;
+        const timing = this.getPowerTiming();
+        const accuracy = 0.62 + timing * 0.48 - Math.abs(this.aim) * 0.08 - Math.abs(this.height - 0.55) * 0.12;
         const result = resolvePlayerShot(this.run, {
             direction: this.aim,
-            height: 0.46 + this.power * 0.26,
+            height: this.height + (this.power - 0.72) * 0.34,
             power: this.power,
             accuracy,
-            curve: this.curve
+            curve: this.curve,
+            timing
         });
         this.animateShot(result);
     }
@@ -206,25 +217,31 @@ export class Game extends Scene {
     private animateShot(result: ShotResult) {
         if (!this.ball || !this.keeper) return;
         const targetX = CENTER_X + result.finalX * 250;
-        const targetY = GOAL_Y + 110 - result.finalY * 100;
+        const targetY = GOAL_Y + 112 - result.finalY * 118;
         const keeperX = CENTER_X + result.keeperDive * 172;
 
-        this.tweens.add({ targets: this.keeper, x: keeperX, angle: result.keeperDive * 24, duration: 420, ease: 'Cubic.easeOut' });
+        this.spawnBallTrail(targetX, targetY);
+        this.tweens.add({ targets: this.keeper, x: keeperX, angle: result.keeperDive * 42, y: 188, duration: 260, ease: 'Cubic.easeOut' });
         this.tweens.add({
             targets: this.ball,
             x: targetX,
             y: targetY,
-            scaleX: 0.64,
-            scaleY: 0.64,
-            duration: 560,
-            ease: 'Cubic.easeIn',
-            onComplete: () => this.finishShot(result)
+            scaleX: result.goal ? 0.5 : 0.9,
+            scaleY: result.goal ? 0.5 : 0.9,
+            duration: 285,
+            ease: 'Expo.easeIn',
+            onComplete: () => {
+                this.cameras.main.shake(result.goal ? 150 : 95, result.goal ? 0.009 : 0.005);
+                this.finishShot(result);
+            }
         });
     }
 
     private finishShot(result: ShotResult) {
         const made = result.goal;
         this.playerGoals.push(made);
+        const opponentMade = this.run ? simulateOpponentPenalty(this.run) : false;
+        this.opponentGoals.push(opponentMade);
         this.lastMessage = made ? `GOAL! ${result.explanation}.` : `No goal: ${result.explanation}.`;
 
         if (!made && this.run && this.run.stats.retryTokens > 0) {
@@ -235,13 +252,17 @@ export class Game extends Scene {
             return;
         }
 
-        this.time.delayedCall(850, () => this.afterShot());
+        this.phase = 'result';
+        this.drawPlayfield();
+        this.resultBanner(made, opponentMade);
+        this.time.delayedCall(900, () => this.afterShot());
     }
 
     private consumeRetry() {
         if (!this.run || !this.awaitingRetry) return;
         this.run = { ...this.run, stats: { ...this.run.stats, retryTokens: this.run.stats.retryTokens - 1 } };
         this.playerGoals.pop();
+        this.opponentGoals.pop();
         this.lastMessage = 'Retry spent. Breathe and hit it clean.';
         this.nextShot();
     }
@@ -256,7 +277,7 @@ export class Game extends Scene {
 
     private resolveRound() {
         if (!this.run) return;
-        const result = resolveShootoutRound(this.run, this.playerGoals);
+        const result = resolveShootoutRound(this.run, this.playerGoals, Math.random, this.opponentGoals);
         this.run = result.nextRun;
         this.saveRun();
         this.updateRecord();
@@ -318,29 +339,140 @@ export class Game extends Scene {
         this.ball = this.add.circle(CENTER_X, BALL_START_Y, 17, 0xffffff).setStrokeStyle(4, 0x111827);
         this.ui.push(this.ball);
 
-        this.label(72, 44, `Shot ${this.shotNumber}/5`, 26, '#f8fafc').setOrigin(0, 0.5);
-        this.label(72, 82, `${this.run?.playerCountry.name} vs ${this.run?.currentOpponent.country.name}`, 22, '#bfdbfe').setOrigin(0, 0.5);
-        this.label(CENTER_X, 590, this.lastMessage, 23, '#fef3c7');
-        this.scoreDots();
-        this.drawMeters();
+        this.scoreboard();
+        this.drawTargetReticle();
+        this.label(CENTER_X, 574, this.lastMessage, 24, '#fef3c7');
+        this.drawShotHud();
     }
 
-    private drawMeters() {
-        this.ui.filter((item) => item.name === 'meter').forEach((item) => item.destroy());
-        this.ui = this.ui.filter((item) => item.name !== 'meter');
-        const g = this.add.graphics().setName('meter');
+    private drawShotHud() {
+        this.ui.filter((item) => item.name === 'shot-hud').forEach((item) => item.destroy());
+        this.ui = this.ui.filter((item) => item.name !== 'shot-hud');
+        const g = this.add.graphics().setName('shot-hud');
         this.ui.push(g);
-        this.meter(g, 238, 622, 548, 'Direction', (this.aim + 1) / 2, this.phase === 'aim');
-        this.meter(g, 238, 666, 548, 'Power', this.power, this.phase === 'power');
-        this.meter(g, 238, 710, 548, 'Curve', (this.curve + 1) / 2, this.phase === 'curve');
+        this.phaseChip(144, 618, '1 AIM', this.phase === 'aim');
+        this.phaseChip(144, 666, '2 POWER', this.phase === 'power');
+        this.phaseChip(144, 714, '3 CURVE', this.phase === 'curve');
+        this.powerMeter(g, 254, 650, 520);
+        this.curveMeter(g, 254, 704, 520);
+        this.drawTargetReticle('shot-hud');
     }
 
-    private meter(g: Phaser.GameObjects.Graphics, x: number, y: number, width: number, label: string, value: number, active: boolean) {
-        g.fillStyle(0x0f172a, 0.9).fillRoundedRect(x, y, width, 18, 8);
-        g.fillStyle(active ? 0xfacc15 : 0x38bdf8, 1).fillRoundedRect(x, y, width * value, 18, 8);
-        g.lineStyle(2, active ? 0xfef08a : 0x475569).strokeRoundedRect(x, y, width, 18, 8);
-        const text = this.add.text(x - 104, y + 9, label, { fontFamily: 'Arial', fontSize: '18px', color: '#e2e8f0' }).setOrigin(0, 0.5).setName('meter');
-        this.ui.push(text);
+    private phaseChip(x: number, y: number, text: string, active: boolean) {
+        const rect = this.add.rectangle(x, y, 126, 32, active ? 0xfacc15 : 0x0f172a, active ? 1 : 0.78).setStrokeStyle(2, active ? 0xfef08a : 0x475569).setName('shot-hud');
+        const label = this.add.text(x, y, text, { fontFamily: 'Arial Black', fontSize: '16px', color: active ? '#172033' : '#cbd5e1' }).setOrigin(0.5).setName('shot-hud');
+        this.ui.push(rect, label);
+    }
+
+    private powerMeter(g: Phaser.GameObjects.Graphics, x: number, y: number, width: number) {
+        const zone = this.getPowerZone();
+        g.fillStyle(0x0f172a, 0.88).fillRoundedRect(x, y, width, 22, 9);
+        g.fillStyle(0xef4444, 0.85).fillRoundedRect(x, y, width * 0.28, 22, 9);
+        g.fillStyle(0x22c55e, 0.9).fillRect(x + width * zone.min, y, width * (zone.max - zone.min), 22);
+        g.fillStyle(0xfacc15, 1).fillRoundedRect(x, y, width * this.power, 22, 9);
+        g.lineStyle(3, this.phase === 'power' ? 0xfef08a : 0x475569).strokeRoundedRect(x, y, width, 22, 9);
+        this.hudText(x + width + 18, y + 11, this.powerHint(), 18, this.phase === 'power' ? '#fef3c7' : '#cbd5e1');
+    }
+
+    private curveMeter(g: Phaser.GameObjects.Graphics, x: number, y: number, width: number) {
+        const value = (this.curve + 1) / 2;
+        g.fillStyle(0x0f172a, 0.88).fillRoundedRect(x, y, width, 18, 8);
+        g.fillStyle(0x38bdf8, 0.75).fillRect(x, y, width * value, 18);
+        g.fillStyle(0x22c55e, 0.85).fillRect(x + width * 0.45, y, width * 0.1, 18);
+        g.lineStyle(2, this.phase === 'curve' ? 0xfef08a : 0x475569).strokeRoundedRect(x, y, width, 18, 8);
+        this.hudText(x + width + 18, y + 9, this.curve < -0.25 ? 'Bend left' : this.curve > 0.25 ? 'Bend right' : 'Straight', 18, '#cbd5e1');
+    }
+
+    private hudText(x: number, y: number, text: string, size: number, color: string) {
+        const label = this.add.text(x, y, text, { fontFamily: 'Arial Black', fontSize: `${size}px`, color }).setOrigin(0, 0.5).setName('shot-hud');
+        this.ui.push(label);
+    }
+
+    private drawTargetReticle(name = 'target') {
+        const x = CENTER_X + this.aim * 250;
+        const y = GOAL_Y + 112 - this.height * 118;
+        const reticle = this.add.graphics().setName(name);
+        reticle.lineStyle(4, this.phase === 'aim' ? 0xfacc15 : 0xe0f2fe, 1);
+        reticle.strokeCircle(x, y, this.phase === 'aim' ? 22 : 14);
+        reticle.lineBetween(x - 34, y, x - 12, y);
+        reticle.lineBetween(x + 12, y, x + 34, y);
+        reticle.lineBetween(x, y - 34, x, y - 12);
+        reticle.lineBetween(x, y + 12, x, y + 34);
+        this.ui.push(reticle);
+    }
+
+    private scoreboard() {
+        if (!this.run) return;
+        const playerScore = this.playerGoals.filter(Boolean).length;
+        const opponentScore = this.opponentGoals.filter(Boolean).length;
+        this.panel(20, 22, 190, 104, 0x0f172a, 0x38bdf8);
+        this.label(54, 48, 'YOU', 16, '#bfdbfe', 'Arial Black').setOrigin(0, 0.5);
+        this.label(54, 82, 'CPU', 16, '#fecaca', 'Arial Black').setOrigin(0, 0.5);
+        this.label(132, 64, `${playerScore}-${opponentScore}`, 36, '#ffffff', 'Arial Black');
+        this.label(116, 110, `Shot ${this.shotNumber}/5`, 15, '#fde68a');
+        this.shotDots(40, 138, this.playerGoals, 0x22c55e);
+        this.shotDots(40, 160, this.opponentGoals, 0xef4444);
+
+        this.panel(824, 24, 176, 112, 0x0f172a, 0xfacc15);
+        this.label(912, 52, this.run.playerCountry.name, 18, '#bfdbfe', 'Arial Black');
+        this.label(912, 78, `vs ${this.run.currentOpponent.country.name}`, 17, '#fecaca');
+        this.label(912, 106, this.run.currentOpponent.keeper.tendency.toUpperCase(), 14, '#fef3c7', 'Arial Black');
+    }
+
+    private shotDots(x: number, y: number, goals: boolean[], color: number) {
+        for (let i = 0; i < 5; i += 1) {
+            const made = goals[i];
+            const fill = made === undefined ? 0x334155 : made ? color : 0x111827;
+            this.ui.push(this.add.circle(x + i * 25, y, 8, fill).setStrokeStyle(2, made === undefined ? 0x64748b : 0xffffff));
+        }
+    }
+
+    private resultBanner(playerMade: boolean, opponentMade: boolean) {
+        const message = `You ${playerMade ? 'scored' : 'missed'} / Opponent ${opponentMade ? 'scored' : 'missed'}`;
+        const rect = this.add.rectangle(CENTER_X, 346, 610, 62, playerMade ? 0x14532d : 0x7f1d1d, 0.92).setStrokeStyle(3, 0xfef3c7);
+        const text = this.add.text(CENTER_X, 346, message, { fontFamily: 'Arial Black', fontSize: '28px', color: '#ffffff' }).setOrigin(0.5);
+        this.ui.push(rect, text);
+    }
+
+    private spawnBallTrail(targetX: number, targetY: number) {
+        for (let i = 1; i <= 5; i += 1) {
+            const t = i / 6;
+            const trail = this.add.circle(CENTER_X + (targetX - CENTER_X) * t, BALL_START_Y + (targetY - BALL_START_Y) * t, 15 - i * 2, 0xfef3c7, 0.18).setName('trail');
+            this.ui.push(trail);
+            this.tweens.add({ targets: trail, alpha: 0, duration: 280, delay: i * 22 });
+        }
+    }
+
+    private getPowerZone() {
+        const half = (this.run?.stats.perfectZone ?? 0.14) / 2;
+        return { min: Math.max(0.48, 0.72 - half), max: Math.min(0.92, 0.72 + half) };
+    }
+
+    private getPowerTiming() {
+        const zone = this.getPowerZone();
+        const center = (zone.min + zone.max) / 2;
+        const distance = Math.abs(this.power - center);
+        return Math.max(0, 1 - distance / 0.32);
+    }
+
+    private powerHint() {
+        const zone = this.getPowerZone();
+        if (this.power < zone.min) return 'Weak';
+        if (this.power > zone.max) return 'Risky';
+        return 'Clean strike';
+    }
+
+    private updateAimInput(step: number) {
+        const horizontal = (this.cursors?.right.isDown || this.keys?.D.isDown ? 1 : 0) - (this.cursors?.left.isDown || this.keys?.A.isDown ? 1 : 0);
+        const vertical = (this.cursors?.up.isDown || this.keys?.W.isDown ? 1 : 0) - (this.cursors?.down.isDown || this.keys?.S.isDown ? 1 : 0);
+        this.aim = Math.max(-1, Math.min(1, this.aim + horizontal * step * 1.8));
+        this.height = Math.max(0.22, Math.min(0.92, this.height + vertical * step * 1.05));
+    }
+
+    private handlePointerMove(pointer: Phaser.Input.Pointer) {
+        if (this.phase !== 'aim') return;
+        this.aim = Math.max(-1, Math.min(1, (pointer.x - CENTER_X) / 250));
+        this.height = Math.max(0.22, Math.min(0.92, (GOAL_Y + 112 - pointer.y) / 118));
     }
 
     private drawStadium() {
@@ -375,12 +507,6 @@ export class Game extends Scene {
         this.ui.push(this.keeper);
     }
 
-    private scoreDots() {
-        this.playerGoals.forEach((goal, index) => {
-            this.ui.push(this.add.circle(770 + index * 34, 48, 11, goal ? 0x22c55e : 0xef4444).setStrokeStyle(2, 0xffffff));
-        });
-    }
-
     private countryCard(country: Country, x: number, y: number) {
         const card = this.add.container(x, y);
         const bg = this.add.rectangle(0, 0, 450, 86, 0x0f172a, 0.92).setStrokeStyle(3, country.colors[1]);
@@ -389,7 +515,10 @@ export class Game extends Scene {
         const name = this.add.text(-92, -26, country.name, { fontFamily: 'Arial Black', fontSize: '25px', color: '#ffffff' });
         const passive = this.add.text(-92, 12, country.passive, { fontFamily: 'Arial', fontSize: '18px', color: '#cbd5e1' });
         card.add([bg, stripe, flag, name, passive]);
-        card.setSize(450, 86).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.startRun(country));
+        card.setSize(450, 86).setInteractive({ useHandCursor: true }).on('pointerdown', (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+            event.stopPropagation();
+            this.startRun(country);
+        });
         this.ui.push(card);
     }
 
@@ -418,7 +547,10 @@ export class Game extends Scene {
         const bg = this.add.rectangle(0, 0, width, height, 0xfacc15, 1).setStrokeStyle(3, 0x422006);
         const label = this.add.text(0, 0, text, { fontFamily: 'Arial Black', fontSize: '24px', color: '#1f2937' }).setOrigin(0.5);
         container.add([bg, label]);
-        container.setSize(width, height).setInteractive({ useHandCursor: true }).on('pointerdown', onClick);
+        container.setSize(width, height).setInteractive({ useHandCursor: true }).on('pointerdown', (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+            event.stopPropagation();
+            onClick();
+        });
         this.ui.push(container);
         return container;
     }

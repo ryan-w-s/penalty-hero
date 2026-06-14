@@ -39,7 +39,7 @@ const main = () => {
     test('resolves readable keeper tendencies without making keepers psychic', () => {
         const run = createRun('Brazil', () => 0.25);
         const keeper = { ...run.currentOpponent.keeper, tendency: 'left-biased' as const };
-        const shot = { direction: -0.85, height: 0.52, power: 0.82, accuracy: 0.9, curve: -0.3 };
+        const shot = { direction: -0.85, height: 0.52, power: 0.82, accuracy: 0.9, curve: -0.3, timing: 0.45 };
 
         const result = resolvePlayerShot(run, shot, keeper, () => 0.1);
 

@@ -67,6 +67,7 @@ export type ShotIntent = {
     power: number;
     accuracy: number;
     curve: number;
+    timing: number;
 };
 
 export type ShotResult = {
@@ -174,24 +175,29 @@ export const resolvePlayerShot = (
     random: () => number = Math.random
 ): ShotResult => {
     const composure = clamp((shot.accuracy + run.stats.accuracy + run.stats.morale * 0.35) / 2.35, 0, 1.35);
+    const timing = clamp(shot.timing, 0, 1.25);
     const power = clamp((shot.power + run.stats.power) / 2, 0.2, 1.35);
     const curve = clamp(shot.curve * run.stats.curve, -1.2, 1.2);
-    const placementNoise = (random() - 0.5) * (0.34 - composure * 0.16);
+    const placementNoise = (random() - 0.5) * (0.38 - composure * 0.14 - timing * 0.16);
     const finalX = clamp(shot.direction + curve * 0.18 + placementNoise, -1.18, 1.18);
-    const finalY = clamp(shot.height + (random() - 0.5) * (0.25 - composure * 0.1), 0, 1.15);
+    const finalY = clamp(shot.height + (random() - 0.5) * (0.28 - composure * 0.08 - timing * 0.08), 0, 1.15);
     const offTarget = Math.abs(finalX) > 1 || finalY > 1 || finalY < 0.08;
     const keeperDive = chooseKeeperDive(keeper, shot.direction, run, random);
     const readDistance = Math.abs(finalX - keeperDive);
-    const saveReach = clamp(0.28 + keeper.skill * 0.32 - power * 0.12, 0.18, 0.5);
-    const saved = !offTarget && readDistance < saveReach && random() < keeper.skill + 0.1;
+    const saveReach = clamp(0.3 + keeper.skill * 0.32 - power * 0.15 - timing * 0.08, 0.14, 0.5);
+    const saved = !offTarget && readDistance < saveReach && random() < keeper.skill + 0.14 - timing * 0.16;
     const goal = !offTarget && !saved;
     const explanation = offTarget
-        ? 'just off target'
+        ? power > 1.05
+          ? 'blasted over'
+          : 'dragged wide'
         : saved
           ? `${keeper.name} read the shot`
-          : power > 1.05
-            ? 'too much pace to stop'
-            : 'placed beyond the dive';
+          : timing > 0.85
+            ? 'perfectly struck'
+            : power > 1.05
+              ? 'too much pace to stop'
+              : 'placed beyond the dive';
 
     return { goal, saved, offTarget, keeperDive, finalX, finalY, explanation };
 };
@@ -214,11 +220,12 @@ const chooseKeeperDive = (keeper: Keeper, intendedX: number, run: RunState, rand
 export const resolveShootoutRound = (
     run: RunState,
     playerGoals: boolean[],
-    random: () => number = Math.random
+    random: () => number = Math.random,
+    opponentGoals?: boolean[]
 ): ShootoutResult => {
     const playerScore = playerGoals.filter(Boolean).length;
     const opponentChance = clamp(0.56 + run.roundIndex * 0.06 - run.stats.morale * 0.08, 0.42, 0.78);
-    const opponentScore = playerGoals.reduce((score) => score + (random() < opponentChance ? 1 : 0), 0);
+    const opponentScore = (opponentGoals ?? playerGoals.map(() => random() < opponentChance)).filter(Boolean).length;
     const won = playerScore >= opponentScore;
     const lost = !won;
 
@@ -238,6 +245,11 @@ export const resolveShootoutRound = (
     };
 
     return { won, lost, playerScore, opponentScore, nextRun };
+};
+
+export const simulateOpponentPenalty = (run: RunState, random: () => number = Math.random): boolean => {
+    const chance = clamp(0.56 + run.roundIndex * 0.06 - run.stats.morale * 0.08, 0.42, 0.78);
+    return random() < chance;
 };
 
 const chooseNextOpponent = (run: RunState, nextRound: number): Team => {
