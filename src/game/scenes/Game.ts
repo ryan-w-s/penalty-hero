@@ -218,31 +218,37 @@ export class Game extends Scene {
         if (!this.ball || !this.keeper) return;
         const targetX = CENTER_X + result.finalX * 250;
         const targetY = GOAL_Y + 112 - result.finalY * 118;
-        const keeperX = CENTER_X + result.keeperDive * 172;
+        const keeperBallX = CENTER_X + result.keeperDive * 250;
+        const contactSide = Math.sign(targetX - keeperBallX) || 1;
+        const impactX = result.saved ? targetX - contactSide * 18 : targetX;
+        const impactY = result.saved ? Math.max(122, Math.min(260, targetY + 4)) : targetY;
+        const keeperX = result.saved ? targetX - contactSide * 34 : CENTER_X + result.keeperDive * 220;
+        const keeperY = result.saved ? impactY + 14 : 188;
 
-        this.spawnBallTrail(targetX, targetY);
-        this.tweens.add({ targets: this.keeper, x: keeperX, angle: result.keeperDive * 42, y: 188, duration: 260, ease: 'Cubic.easeOut' });
+        this.drawShotPath(targetX, targetY, result);
+        this.spawnBallTrail(impactX, impactY);
+        this.tweens.add({ targets: this.keeper, x: keeperX, y: keeperY, angle: result.saved ? contactSide * -38 : result.keeperDive * 42, duration: 260, ease: 'Cubic.easeOut' });
         this.tweens.add({
             targets: this.ball,
-            x: targetX,
-            y: targetY,
-            scaleX: result.goal ? 0.5 : 0.9,
-            scaleY: result.goal ? 0.5 : 0.9,
-            duration: 285,
+            x: impactX,
+            y: impactY,
+            scaleX: result.saved ? 1.05 : result.goal ? 0.5 : 0.9,
+            scaleY: result.saved ? 1.05 : result.goal ? 0.5 : 0.9,
+            duration: result.saved ? 245 : 285,
             ease: 'Expo.easeIn',
             onComplete: () => {
                 this.cameras.main.shake(result.goal ? 150 : 95, result.goal ? 0.009 : 0.005);
-                this.finishShot(result);
+                this.finishShot(result, { ballX: impactX, ballY: impactY, keeperX });
             }
         });
     }
 
-    private finishShot(result: ShotResult) {
+    private finishShot(result: ShotResult, visual?: { ballX: number; ballY: number; keeperX: number }) {
         const made = result.goal;
         this.playerGoals.push(made);
         const opponentMade = this.run ? simulateOpponentPenalty(this.run) : false;
         this.opponentGoals.push(opponentMade);
-        this.lastMessage = made ? `GOAL! ${result.explanation}.` : `No goal: ${result.explanation}.`;
+        this.lastMessage = made ? `GOAL: ${result.explanation}.` : `NO GOAL: ${result.explanation}.`;
 
         if (!made && this.run && this.run.stats.retryTokens > 0) {
             this.awaitingRetry = true;
@@ -253,9 +259,12 @@ export class Game extends Scene {
         }
 
         this.phase = 'result';
-        this.drawPlayfield();
+        this.clearTransientShotHud();
+        this.scoreboard();
+        if (visual) this.drawOutcomeMarker(result, visual.ballX, visual.ballY, visual.keeperX);
         this.resultBanner(made, opponentMade);
-        this.time.delayedCall(900, () => this.afterShot());
+        this.label(CENTER_X, 604, this.lastMessage, 24, '#fef3c7').setName('outcome');
+        this.time.delayedCall(1350, () => this.afterShot());
     }
 
     private consumeRetry() {
@@ -341,7 +350,7 @@ export class Game extends Scene {
 
         this.scoreboard();
         this.drawTargetReticle();
-        this.label(CENTER_X, 574, this.lastMessage, 24, '#fef3c7');
+        this.label(CENTER_X, 574, this.lastMessage, 24, '#fef3c7').setName('prompt');
         this.drawShotHud();
     }
 
@@ -441,6 +450,41 @@ export class Game extends Scene {
             this.ui.push(trail);
             this.tweens.add({ targets: trail, alpha: 0, duration: 280, delay: i * 22 });
         }
+    }
+
+    private drawShotPath(targetX: number, targetY: number, result: ShotResult) {
+        const g = this.add.graphics().setName('outcome');
+        g.lineStyle(3, result.saved ? 0xf97316 : result.goal ? 0x22c55e : 0xef4444, 0.7);
+        g.lineBetween(CENTER_X, BALL_START_Y - 8, targetX, targetY);
+        g.fillStyle(result.goal ? 0x22c55e : result.saved ? 0xf97316 : 0xef4444, 0.18);
+        g.fillCircle(targetX, targetY, 22);
+        this.ui.push(g);
+    }
+
+    private drawOutcomeMarker(result: ShotResult, ballX: number, ballY: number, keeperX: number) {
+        const marker = this.add.graphics().setName('outcome');
+        const reachPixels = result.saveReach * 250;
+        const keeperBallY = ballY;
+        marker.lineStyle(3, result.saved ? 0xf97316 : 0x38bdf8, 0.8);
+        marker.strokeCircle(keeperX, keeperBallY, reachPixels);
+        marker.lineStyle(5, result.saved ? 0xf97316 : 0x22c55e, 1);
+        marker.strokeCircle(ballX, ballY, result.saved ? 20 : 14);
+        marker.lineStyle(3, 0xffffff, 0.65);
+        marker.lineBetween(keeperX, keeperBallY, ballX, ballY);
+        this.ui.push(marker);
+
+        const distance = Math.round(result.readDistance * 100);
+        const reach = Math.round(result.saveReach * 100);
+        const headline = result.offTarget
+            ? 'OFF TARGET'
+            : result.saved
+              ? `SAVED: gap ${distance} < reach ${reach}`
+              : `GOAL: gap ${distance} > reach ${reach}`;
+        const x = Math.max(220, Math.min(804, (keeperX + ballX) / 2));
+        const y = Math.max(116, Math.min(330, ballY - 62));
+        const bg = this.add.rectangle(x, y, 390, 44, result.saved ? 0x7c2d12 : result.goal ? 0x14532d : 0x7f1d1d, 0.94).setStrokeStyle(2, 0xfef3c7).setName('outcome');
+        const text = this.add.text(x, y, headline, { fontFamily: 'Arial Black', fontSize: '20px', color: '#ffffff' }).setOrigin(0.5).setName('outcome');
+        this.ui.push(bg, text);
     }
 
     private getPowerZone() {
@@ -581,6 +625,12 @@ export class Game extends Scene {
         this.ui = [];
         this.ball = undefined;
         this.keeper = undefined;
+    }
+
+    private clearTransientShotHud() {
+        const transientNames = new Set(['shot-hud', 'prompt', 'target']);
+        this.ui.filter((item) => transientNames.has(item.name)).forEach((item) => item.destroy());
+        this.ui = this.ui.filter((item) => !transientNames.has(item.name));
     }
 
     private saveRun() {

@@ -77,6 +77,9 @@ export type ShotResult = {
     keeperDive: number;
     finalX: number;
     finalY: number;
+    readDistance: number;
+    saveReach: number;
+    timing: number;
     explanation: string;
 };
 
@@ -192,14 +195,14 @@ export const resolvePlayerShot = (
           ? 'blasted over'
           : 'dragged wide'
         : saved
-          ? `${keeper.name} read the shot`
+          ? `${keeper.name} reached your target`
           : timing > 0.85
-            ? 'perfectly struck'
+            ? 'perfectly struck beyond reach'
             : power > 1.05
               ? 'too much pace to stop'
-              : 'placed beyond the dive';
+              : 'outside keeper reach';
 
-    return { goal, saved, offTarget, keeperDive, finalX, finalY, explanation };
+    return { goal, saved, offTarget, keeperDive, finalX, finalY, readDistance, saveReach, timing, explanation };
 };
 
 const chooseKeeperDive = (keeper: Keeper, intendedX: number, run: RunState, random: () => number): number => {

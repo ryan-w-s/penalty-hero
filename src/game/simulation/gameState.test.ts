@@ -46,7 +46,8 @@ const main = () => {
         assert.equal(result.saved, true);
         assert.equal(result.goal, false);
         assert.ok(result.keeperDive < 0);
-        assert.match(result.explanation, /read/);
+        assert.ok(result.readDistance < result.saveReach);
+        assert.match(result.explanation, /reached/);
     });
 
     test('advances after a won shootout and offers upgrades', () => {
