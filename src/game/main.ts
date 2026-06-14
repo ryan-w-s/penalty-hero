@@ -8,10 +8,15 @@ const config: Types.Core.GameConfig = {
     width: 1024,
     height: 768,
     parent: 'game-container',
-    backgroundColor: '#028af8',
+    backgroundColor: '#063d2a',
     scale: {
         mode: Scale.FIT,
         autoCenter: Scale.CENTER_BOTH
+    },
+    input: {
+        keyboard: true,
+        mouse: true,
+        touch: true
     },
     scene: [
         MainGame
