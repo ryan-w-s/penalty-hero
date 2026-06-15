@@ -1,4 +1,5 @@
 import { getUpgrade, UPGRADES } from './upgrades';
+import { getShotSpreadOffset, getShotSpreadRadius } from './shotFlow';
 
 export type KeeperTendency = 'aggressive' | 'patient' | 'left-biased' | 'right-biased' | 'pattern-reading' | 'elite';
 
@@ -100,6 +101,8 @@ const DEFAULT_STATS: PlayerStats = {
     aimSpeed: 1,
     retryTokens: 0
 };
+const SHOT_SPREAD_TARGET_HALF_WIDTH = 293;
+const SHOT_SPREAD_TARGET_HEIGHT = 176;
 
 export const COUNTRIES: Country[] = [
     { id: 'brazil', name: 'Brazil', flag: 'BR', passive: 'Natural curve +12%', bonus: { curve: 0.12 }, colors: [0x16a34a, 0xfacc15] },
@@ -181,9 +184,16 @@ export const resolvePlayerShot = (
     const timing = clamp(shot.timing, 0, 1.25);
     const power = clamp((shot.power + run.stats.power) / 2, 0.2, 1.35);
     const curve = clamp(shot.curve * run.stats.curve, -1.2, 1.2);
-    const placementNoise = (random() - 0.5) * (0.38 - composure * 0.14 - timing * 0.16);
-    const finalX = clamp(shot.direction + curve * 0.18 + placementNoise, -1.18, 1.18);
-    const finalY = clamp(shot.height + (random() - 0.5) * (0.28 - composure * 0.08 - timing * 0.08), 0, 1.15);
+    const spreadRadius = getShotSpreadRadius({
+        timing,
+        accuracy: shot.accuracy,
+        playerAccuracy: run.stats.accuracy,
+        morale: run.stats.morale,
+        targetHalfWidth: SHOT_SPREAD_TARGET_HALF_WIDTH
+    });
+    const spread = getShotSpreadOffset(spreadRadius, SHOT_SPREAD_TARGET_HALF_WIDTH, SHOT_SPREAD_TARGET_HEIGHT, random(), random());
+    const finalX = clamp(shot.direction + curve * 0.18 + spread.x, -1.18, 1.18);
+    const finalY = clamp(shot.height + spread.y, 0, 1.15);
     const offTarget = Math.abs(finalX) > 1 || finalY > 1 || finalY < 0.08;
     const keeperDive = chooseKeeperDive(keeper, shot.direction, run, random);
     const readDistance = Math.abs(finalX - keeperDive);

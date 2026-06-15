@@ -16,7 +16,7 @@ export const getResultConfirmAction = (awaitingRetry: boolean): ResultConfirmAct
 
 export const getShotConfirmPhase = (_phase: ShotInputPhase): ShotConfirmPhase => 'flight';
 
-export const advanceShotPower = (power: number, deltaSeconds: number, speed: number, minPower = 0.15, maxPower = 1, rate = 0.8): number => {
+export const advanceShotPower = (power: number, deltaSeconds: number, speed: number, minPower = 0.15, maxPower = 1, rate = 0.7): number => {
     const range = maxPower - minPower;
     const advanced = power + deltaSeconds * speed * rate;
 
@@ -38,4 +38,20 @@ export const getShotSpreadRadius = (input: ShotSpreadInput, minRadius = 44, maxR
     const radius = minRadius + (1 - Math.min(1, timing)) * (maxRadius - minRadius);
 
     return Math.max(minRadius, Math.min(maxRadius, radius));
+};
+
+export const getShotSpreadOffset = (
+    radiusPixels: number,
+    targetHalfWidth: number,
+    targetHeight: number,
+    angleRoll: number,
+    distanceRoll: number
+): { x: number; y: number } => {
+    const angle = angleRoll * Math.PI * 2;
+    const radius = Math.sqrt(Math.max(0, Math.min(1, distanceRoll))) * radiusPixels;
+
+    return {
+        x: (Math.cos(angle) * radius) / targetHalfWidth,
+        y: (Math.sin(angle) * radius) / targetHeight
+    };
 };

@@ -6,7 +6,7 @@ import {
     serializeRun,
     applyUpgrade
 } from './gameState';
-import { NEXT_SHOT_PROMPT, advanceShotPower, getPowerTiming, getShotConfirmPhase, getShotSpreadRadius, getResultConfirmAction } from './shotFlow';
+import { NEXT_SHOT_PROMPT, advanceShotPower, getPowerTiming, getShotConfirmPhase, getShotSpreadOffset, getShotSpreadRadius, getResultConfirmAction } from './shotFlow';
 import { UPGRADES } from './upgrades';
 
 const assert = {
@@ -91,6 +91,16 @@ const main = () => {
         assert.ok(clean >= 44);
         assert.ok(risky <= clean * 2);
         assert.equal(getShotSpreadRadius({ timing: 0, accuracy: 0, playerAccuracy: 0, morale: 0, targetHalfWidth: 293 }), 88);
+    });
+
+    test('samples shot spread across the full displayed circular zone', () => {
+        const edge = getShotSpreadOffset(88, 293, 176, 0, 1);
+        const center = getShotSpreadOffset(88, 293, 176, 0, 0);
+
+        assert.ok(Math.abs(edge.x - 88 / 293) < 0.001);
+        assert.ok(Math.abs(edge.y) < 0.001);
+        assert.equal(center.x, 0);
+        assert.equal(center.y, 0);
     });
 
     test('keeps spread changing near timing extremes without plateauing', () => {
