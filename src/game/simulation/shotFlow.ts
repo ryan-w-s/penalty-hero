@@ -33,7 +33,7 @@ export const getPowerTiming = (power: number, zone: PowerZone, minPower = 0.15, 
     return Math.max(0, Math.min(1, 1 - distance / farthestDistance));
 };
 
-export const getShotSpreadRadius = (input: ShotSpreadInput, minRadius = 22, maxRadius = minRadius * 2): number => {
+export const getShotSpreadRadius = (input: ShotSpreadInput, minRadius = 44, maxRadius = minRadius * 2): number => {
     const timing = Math.max(0, Math.min(1.25, input.timing));
     const radius = minRadius + (1 - Math.min(1, timing)) * (maxRadius - minRadius);
 

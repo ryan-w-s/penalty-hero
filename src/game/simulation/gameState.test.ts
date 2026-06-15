@@ -88,9 +88,9 @@ const main = () => {
         const risky = getShotSpreadRadius({ timing: 0.25, accuracy: 0.7, playerAccuracy: 1.1, morale: 0.5, targetHalfWidth: 293 });
 
         assert.ok(risky > clean);
-        assert.ok(clean >= 22);
+        assert.ok(clean >= 44);
         assert.ok(risky <= clean * 2);
-        assert.equal(getShotSpreadRadius({ timing: 0, accuracy: 0, playerAccuracy: 0, morale: 0, targetHalfWidth: 293 }), 44);
+        assert.equal(getShotSpreadRadius({ timing: 0, accuracy: 0, playerAccuracy: 0, morale: 0, targetHalfWidth: 293 }), 88);
     });
 
     test('keeps spread changing near timing extremes without plateauing', () => {
