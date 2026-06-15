@@ -13,7 +13,7 @@ import {
     type SavedRun,
     type ShotResult
 } from '../simulation/gameState';
-import { NEXT_SHOT_PROMPT, getResultConfirmAction } from '../simulation/shotFlow';
+import { NEXT_SHOT_PROMPT, advanceShotPower, getPowerTiming, getShotConfirmPhase, getShotSpreadRadius, getResultConfirmAction } from '../simulation/shotFlow';
 import { getUpgrade } from '../simulation/upgrades';
 
 type Phase = 'menu' | 'country' | 'bracket' | 'aim' | 'power' | 'curve' | 'flight' | 'result' | 'upgrade' | 'end';
@@ -40,7 +40,6 @@ export class Game extends Scene {
     private height = 0.56;
     private power = 0.5;
     private curve = 0;
-    private powerDir = 1;
     private curveDir = 1;
     private lastMessage = '';
     private awaitingRetry = false;
@@ -75,15 +74,7 @@ export class Game extends Scene {
 
         if (this.phase === 'aim') {
             this.updateAimInput(step);
-            this.drawShotHud();
-        }
-
-        if (this.phase === 'power') {
-            this.power += this.powerDir * step * 3.15 * speed;
-            if (this.power > 1 || this.power < 0.15) {
-                this.power = Math.max(0.15, Math.min(1, this.power));
-                this.powerDir *= -1;
-            }
+            this.updatePowerInput(step, speed);
             this.drawShotHud();
         }
 
@@ -181,20 +172,14 @@ export class Game extends Scene {
 
     private handleConfirm() {
         if (this.phase === 'aim') {
-            this.phase = 'power';
-            this.lastMessage = 'Stop power in the green strike zone.';
-            this.drawPlayfield();
-            return;
-        }
-
-        if (this.phase === 'power') {
-            this.phase = 'curve';
+            this.phase = getShotConfirmPhase('aim');
             this.lastMessage = 'Stop curve near center for safe, edges for bend.';
             this.drawPlayfield();
             return;
         }
 
         if (this.phase === 'curve') {
+            this.phase = getShotConfirmPhase('curve');
             this.takeShot();
             return;
         }
@@ -364,7 +349,6 @@ export class Game extends Scene {
         this.ui.push(this.ball);
 
         this.scoreboard();
-        this.drawTargetReticle();
         this.label(CENTER_X, 574, this.lastMessage, 24, '#fef3c7').setName('prompt');
         this.drawShotHud();
     }
@@ -375,9 +359,7 @@ export class Game extends Scene {
         const g = this.add.graphics().setName('shot-hud');
         this.ui.push(g);
         this.phaseChip(144, 618, '1 AIM', this.phase === 'aim');
-        this.phaseChip(144, 666, '2 POWER', this.phase === 'power');
-        this.phaseChip(144, 714, '3 CURVE', this.phase === 'curve');
-        this.powerMeter(g, 254, 650, 520);
+        this.phaseChip(144, 666, '2 CURVE', this.phase === 'curve');
         this.curveMeter(g, 254, 704, 520);
         this.drawTargetReticle('shot-hud');
     }
@@ -386,16 +368,6 @@ export class Game extends Scene {
         const rect = this.add.rectangle(x, y, 126, 32, active ? 0xfacc15 : 0x0f172a, active ? 1 : 0.78).setStrokeStyle(2, active ? 0xfef08a : 0x475569).setName('shot-hud');
         const label = this.add.text(x, y, text, { fontFamily: 'Arial Black', fontSize: '16px', color: active ? '#172033' : '#cbd5e1' }).setOrigin(0.5).setName('shot-hud');
         this.ui.push(rect, label);
-    }
-
-    private powerMeter(g: Phaser.GameObjects.Graphics, x: number, y: number, width: number) {
-        const zone = this.getPowerZone();
-        g.fillStyle(0x0f172a, 0.88).fillRoundedRect(x, y, width, 22, 9);
-        g.fillStyle(0xef4444, 0.85).fillRoundedRect(x, y, width * 0.28, 22, 9);
-        g.fillStyle(0x22c55e, 0.9).fillRect(x + width * zone.min, y, width * (zone.max - zone.min), 22);
-        g.fillStyle(0xfacc15, 1).fillRoundedRect(x, y, width * this.power, 22, 9);
-        g.lineStyle(3, this.phase === 'power' ? 0xfef08a : 0x475569).strokeRoundedRect(x, y, width, 22, 9);
-        this.hudText(x + width + 18, y + 11, this.powerHint(), 18, this.phase === 'power' ? '#fef3c7' : '#cbd5e1');
     }
 
     private curveMeter(g: Phaser.GameObjects.Graphics, x: number, y: number, width: number) {
@@ -415,13 +387,20 @@ export class Game extends Scene {
     private drawTargetReticle(name = 'target') {
         const x = this.goalXFromAim(this.aim);
         const y = this.goalYFromHeight(this.height);
+        const spreadRadius = this.getShotSpreadRadius();
+        const reticleRadius = this.phase === 'curve' ? Math.max(12, spreadRadius * 0.72) : spreadRadius;
+        const reticleColor = this.powerHint() === 'Clean strike' ? 0x22c55e : 0xfacc15;
         const reticle = this.add.graphics().setName(name);
-        reticle.lineStyle(4, this.phase === 'aim' ? 0xfacc15 : 0xe0f2fe, 1);
-        reticle.strokeCircle(x, y, this.phase === 'aim' ? 22 : 14);
-        reticle.lineBetween(x - 34, y, x - 12, y);
-        reticle.lineBetween(x + 12, y, x + 34, y);
-        reticle.lineBetween(x, y - 34, x, y - 12);
-        reticle.lineBetween(x, y + 12, x, y + 34);
+        reticle.fillStyle(reticleColor, this.phase === 'aim' ? 0.16 : 0.1).fillCircle(x, y, reticleRadius);
+        reticle.lineStyle(4, reticleColor, 1).strokeCircle(x, y, reticleRadius);
+        reticle.lineStyle(2, 0xe0f2fe, 0.75).strokeCircle(x, y, Math.max(8, reticleRadius * 0.42));
+        reticle.lineStyle(4, 0xe0f2fe, 0.85);
+        const innerGap = Math.max(10, reticleRadius * 0.34);
+        const outerReach = reticleRadius + 16;
+        reticle.lineBetween(x - outerReach, y, x - innerGap, y);
+        reticle.lineBetween(x + innerGap, y, x + outerReach, y);
+        reticle.lineBetween(x, y - outerReach, x, y - innerGap);
+        reticle.lineBetween(x, y + innerGap, x, y + outerReach);
         this.ui.push(reticle);
     }
 
@@ -508,10 +487,20 @@ export class Game extends Scene {
     }
 
     private getPowerTiming() {
-        const zone = this.getPowerZone();
-        const center = (zone.min + zone.max) / 2;
-        const distance = Math.abs(this.power - center);
-        return Math.max(0, 1 - distance / 0.32);
+        return getPowerTiming(this.power, this.getPowerZone());
+    }
+
+    private getShotSpreadRadius() {
+        const timing = this.getPowerTiming();
+        const accuracy = 0.62 + timing * 0.48 - Math.abs(this.aim) * 0.08 - Math.abs(this.height - 0.55) * 0.12;
+
+        return getShotSpreadRadius({
+            timing,
+            accuracy,
+            playerAccuracy: this.run?.stats.accuracy ?? 1,
+            morale: this.run?.stats.morale ?? 0.5,
+            targetHalfWidth: this.goalTargetHalfWidth()
+        });
     }
 
     private powerHint() {
@@ -526,6 +515,10 @@ export class Game extends Scene {
         const vertical = (this.cursors?.up.isDown || this.keys?.W.isDown ? 1 : 0) - (this.cursors?.down.isDown || this.keys?.S.isDown ? 1 : 0);
         this.aim = Math.max(-1, Math.min(1, this.aim + horizontal * step * 1.8));
         this.height = Math.max(AIM_MIN_HEIGHT, Math.min(AIM_MAX_HEIGHT, this.height + vertical * step * 1.05));
+    }
+
+    private updatePowerInput(step: number, speed: number) {
+        this.power = advanceShotPower(this.power, step, speed);
     }
 
     private handlePointerMove(pointer: Phaser.Input.Pointer) {

@@ -6,7 +6,7 @@ import {
     serializeRun,
     applyUpgrade
 } from './gameState';
-import { NEXT_SHOT_PROMPT, getResultConfirmAction } from './shotFlow';
+import { NEXT_SHOT_PROMPT, advanceShotPower, getPowerTiming, getShotConfirmPhase, getShotSpreadRadius, getResultConfirmAction } from './shotFlow';
 import { UPGRADES } from './upgrades';
 
 const assert = {
@@ -81,6 +81,37 @@ const main = () => {
 
     test('restores the aiming prompt for a normal next shot', () => {
         assert.match(NEXT_SHOT_PROMPT, /Move the target/);
+    });
+
+    test('maps risky power timing to a larger aiming spread', () => {
+        const clean = getShotSpreadRadius({ timing: 1, accuracy: 1.05, playerAccuracy: 1.1, morale: 0.5, targetHalfWidth: 293 });
+        const risky = getShotSpreadRadius({ timing: 0.25, accuracy: 0.7, playerAccuracy: 1.1, morale: 0.5, targetHalfWidth: 293 });
+
+        assert.ok(risky > clean);
+        assert.ok(clean >= 22);
+        assert.ok(risky <= clean * 2);
+        assert.equal(getShotSpreadRadius({ timing: 0, accuracy: 0, playerAccuracy: 0, morale: 0, targetHalfWidth: 293 }), 44);
+    });
+
+    test('keeps spread changing near timing extremes without plateauing', () => {
+        assert.ok(getPowerTiming(0.295, { min: 0.65, max: 0.79 }) < getPowerTiming(0.305, { min: 0.65, max: 0.79 }));
+        assert.ok(getShotSpreadRadius({ timing: 0.02, accuracy: 0, playerAccuracy: 0, morale: 0, targetHalfWidth: 293 }) < getShotSpreadRadius({ timing: 0, accuracy: 0, playerAccuracy: 0, morale: 0, targetHalfWidth: 293 }));
+        assert.ok(getShotSpreadRadius({ timing: 0.98, accuracy: 1, playerAccuracy: 1, morale: 1, targetHalfWidth: 293 }) > getShotSpreadRadius({ timing: 1, accuracy: 1, playerAccuracy: 1, morale: 1, targetHalfWidth: 293 }));
+    });
+
+    test('keeps timing continuous when power wraps around', () => {
+        const zone = { min: 0.65, max: 0.79 };
+        assert.ok(Math.abs(getPowerTiming(0.999, zone) - getPowerTiming(0.151, zone)) < 0.03);
+    });
+
+    test('locks aim and power with one confirm before curve selection', () => {
+        assert.equal(getShotConfirmPhase('aim'), 'curve');
+        assert.equal(getShotConfirmPhase('curve'), 'flight');
+    });
+
+    test('advances shot power one way at a slower rate', () => {
+        assert.ok(Math.abs(advanceShotPower(0.5, 1, 0.5) - 0.85) < 0.001);
+        assert.ok(Math.abs(advanceShotPower(0.95, 1, 0.5) - 0.45) < 0.001);
     });
 };
 
