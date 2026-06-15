@@ -21,7 +21,13 @@ type Phase = 'menu' | 'country' | 'bracket' | 'aim' | 'power' | 'curve' | 'fligh
 const SAVE_KEY = 'penalty-hero-save';
 const RECORD_KEY = 'penalty-hero-record';
 const CENTER_X = 512;
-const GOAL_Y = 156;
+const GOAL_X = 212;
+const GOAL_Y = 72;
+const GOAL_WIDTH = 600;
+const GOAL_HEIGHT = 190;
+const GOAL_POST_WIDTH = 7;
+const AIM_MIN_HEIGHT = 0.08;
+const AIM_MAX_HEIGHT = 1;
 const BALL_START_Y = 650;
 
 export class Game extends Scene {
@@ -223,13 +229,13 @@ export class Game extends Scene {
 
     private animateShot(result: ShotResult) {
         if (!this.ball || !this.keeper) return;
-        const targetX = CENTER_X + result.finalX * 250;
-        const targetY = GOAL_Y + 112 - result.finalY * 118;
-        const keeperBallX = CENTER_X + result.keeperDive * 250;
+        const targetX = this.goalXFromAim(result.finalX);
+        const targetY = this.goalYFromHeight(result.finalY);
+        const keeperBallX = this.goalXFromAim(result.keeperDive);
         const contactSide = Math.sign(targetX - keeperBallX) || 1;
         const impactX = result.saved ? targetX - contactSide * 18 : targetX;
-        const impactY = result.saved ? Math.max(122, Math.min(260, targetY + 4)) : targetY;
-        const keeperX = result.saved ? targetX - contactSide * 34 : CENTER_X + result.keeperDive * 220;
+        const impactY = result.saved ? Math.max(GOAL_Y + 14, Math.min(GOAL_Y + GOAL_HEIGHT + 16, targetY + 4)) : targetY;
+        const keeperX = result.saved ? targetX - contactSide * 34 : this.goalXFromAim(result.keeperDive * 0.88);
         const keeperY = result.saved ? impactY + 14 : 188;
 
         this.drawShotPath(targetX, targetY, result);
@@ -407,8 +413,8 @@ export class Game extends Scene {
     }
 
     private drawTargetReticle(name = 'target') {
-        const x = CENTER_X + this.aim * 250;
-        const y = GOAL_Y + 112 - this.height * 118;
+        const x = this.goalXFromAim(this.aim);
+        const y = this.goalYFromHeight(this.height);
         const reticle = this.add.graphics().setName(name);
         reticle.lineStyle(4, this.phase === 'aim' ? 0xfacc15 : 0xe0f2fe, 1);
         reticle.strokeCircle(x, y, this.phase === 'aim' ? 22 : 14);
@@ -472,7 +478,7 @@ export class Game extends Scene {
 
     private drawOutcomeMarker(result: ShotResult, ballX: number, ballY: number, keeperX: number) {
         const marker = this.add.graphics().setName('outcome');
-        const reachPixels = result.saveReach * 250;
+        const reachPixels = result.saveReach * this.goalTargetHalfWidth();
         const keeperBallY = ballY;
         marker.lineStyle(3, result.saved ? 0xf97316 : 0x38bdf8, 0.8);
         marker.strokeCircle(keeperX, keeperBallY, reachPixels);
@@ -519,13 +525,41 @@ export class Game extends Scene {
         const horizontal = (this.cursors?.right.isDown || this.keys?.D.isDown ? 1 : 0) - (this.cursors?.left.isDown || this.keys?.A.isDown ? 1 : 0);
         const vertical = (this.cursors?.up.isDown || this.keys?.W.isDown ? 1 : 0) - (this.cursors?.down.isDown || this.keys?.S.isDown ? 1 : 0);
         this.aim = Math.max(-1, Math.min(1, this.aim + horizontal * step * 1.8));
-        this.height = Math.max(0.22, Math.min(0.92, this.height + vertical * step * 1.05));
+        this.height = Math.max(AIM_MIN_HEIGHT, Math.min(AIM_MAX_HEIGHT, this.height + vertical * step * 1.05));
     }
 
     private handlePointerMove(pointer: Phaser.Input.Pointer) {
         if (this.phase !== 'aim') return;
-        this.aim = Math.max(-1, Math.min(1, (pointer.x - CENTER_X) / 250));
-        this.height = Math.max(0.22, Math.min(0.92, (GOAL_Y + 112 - pointer.y) / 118));
+        this.aim = Math.max(-1, Math.min(1, (pointer.x - CENTER_X) / this.goalTargetHalfWidth()));
+        this.height = Math.max(AIM_MIN_HEIGHT, Math.min(AIM_MAX_HEIGHT, this.heightFromGoalY(pointer.y)));
+    }
+
+    private goalTargetHalfWidth() {
+        return GOAL_WIDTH / 2 - GOAL_POST_WIDTH;
+    }
+
+    private goalTargetTop() {
+        return GOAL_Y + GOAL_POST_WIDTH;
+    }
+
+    private goalTargetBottom() {
+        return GOAL_Y + GOAL_HEIGHT - GOAL_POST_WIDTH;
+    }
+
+    private goalXFromAim(aim: number) {
+        return CENTER_X + aim * this.goalTargetHalfWidth();
+    }
+
+    private goalYFromHeight(height: number) {
+        const targetHeight = this.goalTargetBottom() - this.goalTargetTop();
+        const normalized = (height - AIM_MIN_HEIGHT) / (AIM_MAX_HEIGHT - AIM_MIN_HEIGHT);
+        return this.goalTargetBottom() - normalized * targetHeight;
+    }
+
+    private heightFromGoalY(y: number) {
+        const targetHeight = this.goalTargetBottom() - this.goalTargetTop();
+        const normalized = (this.goalTargetBottom() - y) / targetHeight;
+        return AIM_MIN_HEIGHT + normalized * (AIM_MAX_HEIGHT - AIM_MIN_HEIGHT);
     }
 
     private drawStadium() {
@@ -542,10 +576,10 @@ export class Game extends Scene {
 
     private drawGoal() {
         const g = this.add.graphics();
-        g.lineStyle(7, 0xf8fafc, 1).strokeRect(222, 80, 580, 154);
+        g.lineStyle(GOAL_POST_WIDTH, 0xf8fafc, 1).strokeRect(GOAL_X, GOAL_Y, GOAL_WIDTH, GOAL_HEIGHT);
         g.lineStyle(2, 0xffffff, 0.2);
-        for (let x = 252; x < 802; x += 36) g.lineBetween(x, 82, x, 234);
-        for (let y = 110; y < 234; y += 28) g.lineBetween(224, y, 800, y);
+        for (let x = GOAL_X + 32; x < GOAL_X + GOAL_WIDTH; x += 38) g.lineBetween(x, GOAL_Y + 2, x, GOAL_Y + GOAL_HEIGHT);
+        for (let y = GOAL_Y + 34; y < GOAL_Y + GOAL_HEIGHT; y += 31) g.lineBetween(GOAL_X + 2, y, GOAL_X + GOAL_WIDTH - 2, y);
         this.ui.push(g);
     }
 
