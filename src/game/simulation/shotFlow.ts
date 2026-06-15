@@ -6,17 +6,17 @@ export type ShotSpreadInput = {
     morale: number;
     targetHalfWidth: number;
 };
-export type ShotInputPhase = 'aim' | 'curve';
-export type ShotConfirmPhase = 'curve' | 'flight';
+export type ShotInputPhase = 'aim';
+export type ShotConfirmPhase = 'flight';
 export type PowerZone = { min: number; max: number };
 
 export const NEXT_SHOT_PROMPT = 'Move the target. The circle shows current shot control.';
 
 export const getResultConfirmAction = (awaitingRetry: boolean): ResultConfirmAction => (awaitingRetry ? 'retry' : 'continue');
 
-export const getShotConfirmPhase = (phase: ShotInputPhase): ShotConfirmPhase => (phase === 'aim' ? 'curve' : 'flight');
+export const getShotConfirmPhase = (_phase: ShotInputPhase): ShotConfirmPhase => 'flight';
 
-export const advanceShotPower = (power: number, deltaSeconds: number, speed: number, minPower = 0.15, maxPower = 1, rate = 0.7): number => {
+export const advanceShotPower = (power: number, deltaSeconds: number, speed: number, minPower = 0.15, maxPower = 1, rate = 0.8): number => {
     const range = maxPower - minPower;
     const advanced = power + deltaSeconds * speed * rate;
 

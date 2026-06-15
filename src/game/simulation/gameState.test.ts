@@ -104,9 +104,8 @@ const main = () => {
         assert.ok(Math.abs(getPowerTiming(0.999, zone) - getPowerTiming(0.151, zone)) < 0.03);
     });
 
-    test('locks aim and power with one confirm before curve selection', () => {
-        assert.equal(getShotConfirmPhase('aim'), 'curve');
-        assert.equal(getShotConfirmPhase('curve'), 'flight');
+    test('locks aim and power with one confirm before taking the shot', () => {
+        assert.equal(getShotConfirmPhase('aim'), 'flight');
     });
 
     test('advances shot power one way at a slower rate', () => {

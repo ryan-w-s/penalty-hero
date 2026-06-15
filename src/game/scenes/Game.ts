@@ -16,7 +16,7 @@ import {
 import { NEXT_SHOT_PROMPT, advanceShotPower, getPowerTiming, getShotConfirmPhase, getShotSpreadRadius, getResultConfirmAction } from '../simulation/shotFlow';
 import { getUpgrade } from '../simulation/upgrades';
 
-type Phase = 'menu' | 'country' | 'bracket' | 'aim' | 'power' | 'curve' | 'flight' | 'result' | 'upgrade' | 'end';
+type Phase = 'menu' | 'country' | 'bracket' | 'aim' | 'flight' | 'result' | 'upgrade' | 'end';
 
 const SAVE_KEY = 'penalty-hero-save';
 const RECORD_KEY = 'penalty-hero-record';
@@ -39,8 +39,6 @@ export class Game extends Scene {
     private aim = 0;
     private height = 0.56;
     private power = 0.5;
-    private curve = 0;
-    private curveDir = 1;
     private lastMessage = '';
     private awaitingRetry = false;
     private spaceKey?: Phaser.Input.Keyboard.Key;
@@ -75,15 +73,6 @@ export class Game extends Scene {
         if (this.phase === 'aim') {
             this.updateAimInput(step);
             this.updatePowerInput(step, speed);
-            this.drawShotHud();
-        }
-
-        if (this.phase === 'curve') {
-            this.curve += this.curveDir * step * 3.45 * speed;
-            if (this.curve > 1 || this.curve < -1) {
-                this.curve = Math.max(-1, Math.min(1, this.curve));
-                this.curveDir *= -1;
-            }
             this.drawShotHud();
         }
 
@@ -164,7 +153,6 @@ export class Game extends Scene {
         this.aim = 0;
         this.height = 0.56;
         this.power = 0.5;
-        this.curve = 0;
         this.awaitingRetry = false;
         this.phase = 'aim';
         this.drawPlayfield();
@@ -173,13 +161,6 @@ export class Game extends Scene {
     private handleConfirm() {
         if (this.phase === 'aim') {
             this.phase = getShotConfirmPhase('aim');
-            this.lastMessage = 'Stop curve near center for safe, edges for bend.';
-            this.drawPlayfield();
-            return;
-        }
-
-        if (this.phase === 'curve') {
-            this.phase = getShotConfirmPhase('curve');
             this.takeShot();
             return;
         }
@@ -206,7 +187,7 @@ export class Game extends Scene {
             height: this.height + (this.power - 0.72) * 0.34,
             power: this.power,
             accuracy,
-            curve: this.curve,
+            curve: 0,
             timing
         });
         this.animateShot(result);
@@ -359,8 +340,6 @@ export class Game extends Scene {
         const g = this.add.graphics().setName('shot-hud');
         this.ui.push(g);
         this.phaseChip(144, 618, '1 AIM', this.phase === 'aim');
-        this.phaseChip(144, 666, '2 CURVE', this.phase === 'curve');
-        this.curveMeter(g, 254, 704, 520);
         this.drawTargetReticle('shot-hud');
     }
 
@@ -370,25 +349,11 @@ export class Game extends Scene {
         this.ui.push(rect, label);
     }
 
-    private curveMeter(g: Phaser.GameObjects.Graphics, x: number, y: number, width: number) {
-        const value = (this.curve + 1) / 2;
-        g.fillStyle(0x0f172a, 0.88).fillRoundedRect(x, y, width, 18, 8);
-        g.fillStyle(0x38bdf8, 0.75).fillRect(x, y, width * value, 18);
-        g.fillStyle(0x22c55e, 0.85).fillRect(x + width * 0.45, y, width * 0.1, 18);
-        g.lineStyle(2, this.phase === 'curve' ? 0xfef08a : 0x475569).strokeRoundedRect(x, y, width, 18, 8);
-        this.hudText(x + width + 18, y + 9, this.curve < -0.25 ? 'Bend left' : this.curve > 0.25 ? 'Bend right' : 'Straight', 18, '#cbd5e1');
-    }
-
-    private hudText(x: number, y: number, text: string, size: number, color: string) {
-        const label = this.add.text(x, y, text, { fontFamily: 'Arial Black', fontSize: `${size}px`, color }).setOrigin(0, 0.5).setName('shot-hud');
-        this.ui.push(label);
-    }
-
     private drawTargetReticle(name = 'target') {
         const x = this.goalXFromAim(this.aim);
         const y = this.goalYFromHeight(this.height);
         const spreadRadius = this.getShotSpreadRadius();
-        const reticleRadius = this.phase === 'curve' ? Math.max(12, spreadRadius * 0.72) : spreadRadius;
+        const reticleRadius = spreadRadius;
         const reticleColor = this.powerHint() === 'Clean strike' ? 0x22c55e : 0xfacc15;
         const reticle = this.add.graphics().setName(name);
         reticle.fillStyle(reticleColor, this.phase === 'aim' ? 0.16 : 0.1).fillCircle(x, y, reticleRadius);
