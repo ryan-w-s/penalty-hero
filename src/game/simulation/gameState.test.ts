@@ -6,6 +6,7 @@ import {
     serializeRun,
     applyUpgrade
 } from './gameState';
+import { NEXT_SHOT_PROMPT, getResultConfirmAction } from './shotFlow';
 import { UPGRADES } from './upgrades';
 
 const assert = {
@@ -71,6 +72,15 @@ const main = () => {
         assert.equal(upgraded.pendingUpgrades.length, 0);
         assert.equal(saved.playerCountryId, 'mexico');
         assert.ok(saved.upgrades.includes(UPGRADES[0].id));
+    });
+
+    test('requires explicit confirmation after shot results unless a retry is pending', () => {
+        assert.equal(getResultConfirmAction(false), 'continue');
+        assert.equal(getResultConfirmAction(true), 'retry');
+    });
+
+    test('restores the aiming prompt for a normal next shot', () => {
+        assert.match(NEXT_SHOT_PROMPT, /Move the target/);
     });
 };
 

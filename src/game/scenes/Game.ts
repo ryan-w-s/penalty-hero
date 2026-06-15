@@ -13,6 +13,7 @@ import {
     type SavedRun,
     type ShotResult
 } from '../simulation/gameState';
+import { NEXT_SHOT_PROMPT, getResultConfirmAction } from '../simulation/shotFlow';
 import { getUpgrade } from '../simulation/upgrades';
 
 type Phase = 'menu' | 'country' | 'bracket' | 'aim' | 'power' | 'curve' | 'flight' | 'result' | 'upgrade' | 'end';
@@ -157,7 +158,7 @@ export class Game extends Scene {
         this.playerGoals = [];
         this.opponentGoals = [];
         this.shotNumber = 0;
-        this.lastMessage = 'Move the target. Corners are risky, center is safer.';
+        this.lastMessage = NEXT_SHOT_PROMPT;
         this.nextShot();
     }
 
@@ -192,8 +193,14 @@ export class Game extends Scene {
             return;
         }
 
-        if (this.phase === 'result' && this.awaitingRetry) {
-            this.consumeRetry();
+        if (this.phase === 'result') {
+            const action = getResultConfirmAction(this.awaitingRetry);
+            if (action === 'retry') {
+                this.consumeRetry();
+                return;
+            }
+
+            this.afterShot();
             return;
         }
     }
@@ -250,21 +257,22 @@ export class Game extends Scene {
         this.opponentGoals.push(opponentMade);
         this.lastMessage = made ? `GOAL: ${result.explanation}.` : `NO GOAL: ${result.explanation}.`;
 
-        if (!made && this.run && this.run.stats.retryTokens > 0) {
-            this.awaitingRetry = true;
-            this.phase = 'result';
-            this.drawPlayfield();
-            this.button(CENTER_X, 706, 330, 50, 'Use Retry Token', () => this.consumeRetry());
-            return;
-        }
-
         this.phase = 'result';
         this.clearTransientShotHud();
         this.scoreboard();
         if (visual) this.drawOutcomeMarker(result, visual.ballX, visual.ballY, visual.keeperX);
         this.resultBanner(made, opponentMade);
         this.label(CENTER_X, 604, this.lastMessage, 24, '#fef3c7').setName('outcome');
-        this.time.delayedCall(1350, () => this.afterShot());
+
+        if (!made && this.run && this.run.stats.retryTokens > 0) {
+            this.awaitingRetry = true;
+            this.label(CENTER_X, 648, 'Click to use retry token', 22, '#dbeafe').setName('outcome');
+            this.button(CENTER_X, 706, 330, 50, 'Use Retry Token', () => this.consumeRetry());
+            return;
+        }
+
+        this.label(CENTER_X, 648, 'Click to continue', 22, '#dbeafe').setName('outcome');
+        this.button(CENTER_X, 706, 260, 50, this.shotNumber >= 5 ? 'Resolve Round' : 'Next Shot', () => this.afterShot());
     }
 
     private consumeRetry() {
@@ -280,6 +288,7 @@ export class Game extends Scene {
         if (this.shotNumber >= 5) {
             this.resolveRound();
         } else {
+            this.lastMessage = NEXT_SHOT_PROMPT;
             this.nextShot();
         }
     }
