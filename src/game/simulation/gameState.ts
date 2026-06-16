@@ -180,10 +180,9 @@ export const resolvePlayerShot = (
     keeper: Keeper = run.currentOpponent.keeper,
     random: () => number = Math.random
 ): ShotResult => {
-    const composure = clamp((shot.accuracy + run.stats.accuracy + run.stats.morale * 0.35) / 2.35, 0, 1.35);
     const timing = clamp(shot.timing, 0, 1.25);
     const power = clamp((shot.power + run.stats.power) / 2, 0.2, 1.35);
-    const curve = clamp(shot.curve * run.stats.curve, -1.2, 1.2);
+    const curve = clamp(shot.curve, -1.2, 1.2);
     const spreadRadius = getShotSpreadRadius({
         timing,
         accuracy: shot.accuracy,
@@ -302,6 +301,18 @@ export const applyUpgrade = (run: RunState, upgradeId: string): RunState => {
         pendingUpgrades: []
     };
 };
+
+const statPercent = (value: number): string => (value * 100).toFixed(0);
+
+export const formatPlayerStatSummaries = (stats: PlayerStats): string[] => [
+    `Accuracy ${statPercent(stats.accuracy)}: tighter aim circle`,
+    `Power ${statPercent(stats.power)}: faster shots`,
+    `Curve ${statPercent(stats.curve)}: stronger bend`,
+    `Morale ${statPercent(stats.morale)}: steadier shots, fewer CPU goals`,
+    `Timing ${statPercent(stats.perfectZone)}: larger clean strike window`,
+    `Meter ${statPercent(stats.aimSpeed)}: lower is slower`,
+    `Retries: ${stats.retryTokens > 0 ? `${stats.retryTokens} missed-shot redo${stats.retryTokens === 1 ? '' : 's'}` : 'none'}`
+];
 
 export const serializeRun = (run: RunState): SavedRun => ({
     playerCountryId: run.playerCountry.id,

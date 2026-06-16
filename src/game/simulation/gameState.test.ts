@@ -4,9 +4,10 @@ import {
     resolvePlayerShot,
     resolveShootoutRound,
     serializeRun,
-    applyUpgrade
+    applyUpgrade,
+    formatPlayerStatSummaries
 } from './gameState';
-import { NEXT_SHOT_PROMPT, advanceShotPower, formatShotReachSummary, getPowerTiming, getShotConfirmPhase, getShotSpreadOffset, getShotSpreadRadius, getResultConfirmAction } from './shotFlow';
+import { NEXT_SHOT_PROMPT, advanceShotPower, formatShotReachSummary, getCurveIntent, getPowerTiming, getShotConfirmPhase, getShotSpreadOffset, getShotSpreadRadius, getResultConfirmAction } from './shotFlow';
 import { UPGRADES } from './upgrades';
 
 const assert = {
@@ -94,6 +95,19 @@ const main = () => {
         assert.ok(saved.upgrades.includes(UPGRADES[0].id));
     });
 
+    test('summarizes player stats as visible gameplay effects', () => {
+        const run = applyUpgrade(createRun('Brazil', () => 0.42), 'captains-call');
+        const summaries = formatPlayerStatSummaries(run.stats);
+
+        assert.match(summaries.join('\n'), /Accuracy \d+: tighter aim circle/);
+        assert.match(summaries.join('\n'), /Power \d+: faster shots/);
+        assert.match(summaries.join('\n'), /Curve \d+: stronger bend/);
+        assert.match(summaries.join('\n'), /Morale \d+: steadier shots, fewer CPU goals/);
+        assert.match(summaries.join('\n'), /Timing \d+: larger clean strike window/);
+        assert.match(summaries.join('\n'), /Meter \d+: lower is slower/);
+        assert.ok(summaries.includes('Retries: 1 missed-shot redo'));
+    });
+
     test('requires explicit confirmation after shot results unless a retry is pending', () => {
         assert.equal(getResultConfirmAction(false), 'continue');
         assert.equal(getResultConfirmAction(true), 'retry');
@@ -111,6 +125,14 @@ const main = () => {
         assert.ok(clean >= 44);
         assert.ok(risky <= clean * 2);
         assert.equal(getShotSpreadRadius({ timing: 0, accuracy: 0, playerAccuracy: 0, morale: 0, targetHalfWidth: 293 }), 88);
+    });
+
+    test('shrinks the shot spread when accuracy and morale improve', () => {
+        const tense = getShotSpreadRadius({ timing: 0.55, accuracy: 0.7, playerAccuracy: 0.8, morale: 0.1, targetHalfWidth: 293 });
+        const composed = getShotSpreadRadius({ timing: 0.55, accuracy: 0.7, playerAccuracy: 1.4, morale: 0.9, targetHalfWidth: 293 });
+
+        assert.ok(composed < tense);
+        assert.ok(composed >= 44);
     });
 
     test('samples shot spread across the full displayed circular zone', () => {
@@ -141,6 +163,13 @@ const main = () => {
     test('advances shot power one way at a slower rate', () => {
         assert.ok(Math.abs(advanceShotPower(0.5, 1, 0.5) - 0.85) < 0.001);
         assert.ok(Math.abs(advanceShotPower(0.95, 1, 0.5) - 0.45) < 0.001);
+    });
+
+    test('turns player curve input into bounded shot bend', () => {
+        assert.equal(getCurveIntent(0, 1), 0);
+        assert.equal(getCurveIntent(-1, 1), -0.45);
+        assert.equal(getCurveIntent(1, 1), 0.45);
+        assert.equal(getCurveIntent(2, 2), 0.9);
     });
 };
 

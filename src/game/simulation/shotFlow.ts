@@ -11,7 +11,7 @@ export type ShotConfirmPhase = 'flight';
 export type PowerZone = { min: number; max: number };
 export type ShotReachSummary = { offTarget: boolean; saved: boolean; goal: boolean; readDistance: number; saveReach: number };
 
-export const NEXT_SHOT_PROMPT = 'Move the target. The circle shows current shot control.';
+export const NEXT_SHOT_PROMPT = 'Move the target. Angled shots bend. The circle shows shot control.';
 
 export const getResultConfirmAction = (awaitingRetry: boolean): ResultConfirmAction => (awaitingRetry ? 'retry' : 'continue');
 
@@ -27,11 +27,18 @@ export const formatShotReachSummary = (result: ShotReachSummary): string => {
     return `GOAL: gap ${distance} > reach ${reach}`;
 };
 
-export const advanceShotPower = (power: number, deltaSeconds: number, speed: number, minPower = 0.15, maxPower = 1, rate = 0.9): number => {
+export const advanceShotPower = (power: number, deltaSeconds: number, speed: number, minPower = 0.15, maxPower = 1, rate = 0.7): number => {
     const range = maxPower - minPower;
     const advanced = power + deltaSeconds * speed * rate;
 
     return minPower + ((((advanced - minPower) % range) + range) % range);
+};
+
+export const getCurveIntent = (direction: number, curveStat: number): number => {
+    const boundedDirection = Math.max(-1, Math.min(1, direction));
+    const boundedCurve = Math.max(0, Math.min(2, curveStat));
+
+    return Number((boundedDirection * boundedCurve * 0.45).toFixed(3));
 };
 
 export const getPowerTiming = (power: number, zone: PowerZone, minPower = 0.15, maxPower = 1): number => {
@@ -47,8 +54,10 @@ export const getPowerTiming = (power: number, zone: PowerZone, minPower = 0.15, 
 export const getShotSpreadRadius = (input: ShotSpreadInput, minRadius = 44, maxRadius = minRadius * 2): number => {
     const timing = Math.max(0, Math.min(1.25, input.timing));
     const radius = minRadius + (1 - Math.min(1, timing)) * (maxRadius - minRadius);
+    const controlBonus = Math.max(0, Math.min(0.28, (input.accuracy - 0.7) * 0.14 + (input.playerAccuracy - 1) * 0.22 + (input.morale - 0.5) * 0.12));
+    const effectiveBonus = timing > 0.95 ? 0 : controlBonus;
 
-    return Math.max(minRadius, Math.min(maxRadius, radius));
+    return Math.max(minRadius, Math.min(maxRadius, radius * (1 - effectiveBonus)));
 };
 
 export const getShotSpreadOffset = (

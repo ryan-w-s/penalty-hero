@@ -4,6 +4,7 @@ import {
     COUNTRIES,
     createRun,
     deserializeRun,
+    formatPlayerStatSummaries,
     resolvePlayerShot,
     resolveShootoutRound,
     simulateOpponentPenalty,
@@ -13,7 +14,7 @@ import {
     type SavedRun,
     type ShotResult
 } from '../simulation/gameState';
-import { NEXT_SHOT_PROMPT, advanceShotPower, formatShotReachSummary, getPowerTiming, getShotConfirmPhase, getShotSpreadRadius, getResultConfirmAction } from '../simulation/shotFlow';
+import { NEXT_SHOT_PROMPT, advanceShotPower, formatShotReachSummary, getCurveIntent, getPowerTiming, getShotConfirmPhase, getShotSpreadRadius, getResultConfirmAction } from '../simulation/shotFlow';
 import { getUpgrade } from '../simulation/upgrades';
 
 type Phase = 'menu' | 'country' | 'bracket' | 'aim' | 'flight' | 'result' | 'upgrade' | 'end';
@@ -136,8 +137,8 @@ export class Game extends Scene {
             this.label(x - 54, y, team.country.name, 24, isPlayer ? '#bbf7d0' : '#e5e7eb').setOrigin(0, 0.5);
         });
 
-        this.statsPanel(152, 574);
-        this.button(CENTER_X, 668, 280, 62, 'Step Up', () => this.startShootout());
+        this.statsPanel(152, 502);
+        this.button(CENTER_X, 704, 280, 62, 'Step Up', () => this.startShootout());
     }
 
     private startShootout() {
@@ -187,7 +188,7 @@ export class Game extends Scene {
             height: this.height + (this.power - 0.72) * 0.34,
             power: this.power,
             accuracy,
-            curve: 0,
+            curve: getCurveIntent(this.aim, this.run.stats.curve),
             timing
         });
         this.animateShot(result);
@@ -340,6 +341,8 @@ export class Game extends Scene {
         const g = this.add.graphics().setName('shot-hud');
         this.ui.push(g);
         this.phaseChip(144, 618, '1 AIM', this.phase === 'aim');
+        this.label(828, 618, `Bend ${Math.round(getCurveIntent(this.aim, this.run?.stats.curve ?? 0.6) * 100)}`, 18, '#dbeafe').setName('shot-hud');
+        this.label(828, 642, this.powerHint(), 18, '#fef3c7', 'Arial Black').setName('shot-hud');
         this.drawTargetReticle('shot-hud');
     }
 
@@ -563,16 +566,18 @@ export class Game extends Scene {
 
     private statsPanel(x: number, y: number) {
         if (!this.run) return;
-        this.panel(x, y, 720, 86, 0x0f172a, 0x334155);
-        const s = this.run.stats;
-        const stats = [
-            `Accuracy ${(s.accuracy * 100).toFixed(0)}`,
-            `Power ${(s.power * 100).toFixed(0)}`,
-            `Curve ${(s.curve * 100).toFixed(0)}`,
-            `Morale ${(s.morale * 100).toFixed(0)}`,
-            `Retries ${s.retryTokens}`
-        ];
-        stats.forEach((stat, index) => this.label(x + 84 + index * 132, y + 43, stat, 19, '#e2e8f0'));
+        this.panel(x, y, 720, 148, 0x0f172a, 0x334155);
+        const stats = formatPlayerStatSummaries(this.run.stats);
+        stats.forEach((stat, index) => {
+            const column = index % 2;
+            const row = Math.floor(index / 2);
+            const label = this.add.text(x + 26 + column * 346, y + 20 + row * 32, stat, {
+                fontFamily: 'Arial',
+                fontSize: '17px',
+                color: '#e2e8f0'
+            });
+            this.ui.push(label);
+        });
     }
 
     private panel(x: number, y: number, width: number, height: number, color: number, stroke: number) {
