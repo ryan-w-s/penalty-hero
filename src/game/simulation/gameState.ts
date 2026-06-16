@@ -198,7 +198,8 @@ export const resolvePlayerShot = (
     const keeperDive = chooseKeeperDive(keeper, shot.direction, run, random);
     const readDistance = Math.abs(finalX - keeperDive);
     const saveReach = clamp(0.3 + keeper.skill * 0.32 - power * 0.15 - timing * 0.08, 0.14, 0.5);
-    const saved = !offTarget && readDistance < saveReach && random() < keeper.skill + 0.14 - timing * 0.16;
+    const withinKeeperReach = readDistance < saveReach;
+    const saved = !offTarget && withinKeeperReach && random() < keeper.skill + 0.14 - timing * 0.16;
     const goal = !offTarget && !saved;
     const explanation = offTarget
         ? power > 1.05
@@ -206,11 +207,13 @@ export const resolvePlayerShot = (
           : 'dragged wide'
         : saved
           ? `${keeper.name} reached your target`
-          : timing > 0.85
-            ? 'perfectly struck beyond reach'
-            : power > 1.05
-              ? 'too much pace to stop'
-              : 'outside keeper reach';
+          : withinKeeperReach
+            ? `${keeper.name} missed the save`
+            : timing > 0.85
+              ? 'perfectly struck beyond reach'
+              : power > 1.05
+                ? 'too much pace to stop'
+                : 'outside keeper reach';
 
     return { goal, saved, offTarget, keeperDive, finalX, finalY, readDistance, saveReach, timing, explanation };
 };

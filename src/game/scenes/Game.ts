@@ -13,7 +13,7 @@ import {
     type SavedRun,
     type ShotResult
 } from '../simulation/gameState';
-import { NEXT_SHOT_PROMPT, advanceShotPower, getPowerTiming, getShotConfirmPhase, getShotSpreadRadius, getResultConfirmAction } from '../simulation/shotFlow';
+import { NEXT_SHOT_PROMPT, advanceShotPower, formatShotReachSummary, getPowerTiming, getShotConfirmPhase, getShotSpreadRadius, getResultConfirmAction } from '../simulation/shotFlow';
 import { getUpgrade } from '../simulation/upgrades';
 
 type Phase = 'menu' | 'country' | 'bracket' | 'aim' | 'flight' | 'result' | 'upgrade' | 'end';
@@ -432,13 +432,7 @@ export class Game extends Scene {
         marker.lineBetween(keeperX, keeperBallY, ballX, ballY);
         this.ui.push(marker);
 
-        const distance = Math.round(result.readDistance * 100);
-        const reach = Math.round(result.saveReach * 100);
-        const headline = result.offTarget
-            ? 'OFF TARGET'
-            : result.saved
-              ? `SAVED: gap ${distance} < reach ${reach}`
-              : `GOAL: gap ${distance} > reach ${reach}`;
+        const headline = formatShotReachSummary(result);
         const x = Math.max(220, Math.min(804, (keeperX + ballX) / 2));
         const y = Math.max(116, Math.min(330, ballY - 62));
         const bg = this.add.rectangle(x, y, 390, 44, result.saved ? 0x7c2d12 : result.goal ? 0x14532d : 0x7f1d1d, 0.94).setStrokeStyle(2, 0xfef3c7).setName('outcome');

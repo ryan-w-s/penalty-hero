@@ -9,6 +9,7 @@ export type ShotSpreadInput = {
 export type ShotInputPhase = 'aim';
 export type ShotConfirmPhase = 'flight';
 export type PowerZone = { min: number; max: number };
+export type ShotReachSummary = { offTarget: boolean; saved: boolean; goal: boolean; readDistance: number; saveReach: number };
 
 export const NEXT_SHOT_PROMPT = 'Move the target. The circle shows current shot control.';
 
@@ -16,7 +17,17 @@ export const getResultConfirmAction = (awaitingRetry: boolean): ResultConfirmAct
 
 export const getShotConfirmPhase = (_phase: ShotInputPhase): ShotConfirmPhase => 'flight';
 
-export const advanceShotPower = (power: number, deltaSeconds: number, speed: number, minPower = 0.15, maxPower = 1, rate = 0.7): number => {
+export const formatShotReachSummary = (result: ShotReachSummary): string => {
+    const distance = Math.round(result.readDistance * 100);
+    const reach = Math.round(result.saveReach * 100);
+
+    if (result.offTarget) return 'OFF TARGET';
+    if (result.saved) return `SAVED: gap ${distance} < reach ${reach}`;
+    if (result.goal && result.readDistance < result.saveReach) return `GOAL: keeper missed gap ${distance} < reach ${reach}`;
+    return `GOAL: gap ${distance} > reach ${reach}`;
+};
+
+export const advanceShotPower = (power: number, deltaSeconds: number, speed: number, minPower = 0.15, maxPower = 1, rate = 0.9): number => {
     const range = maxPower - minPower;
     const advanced = power + deltaSeconds * speed * rate;
 

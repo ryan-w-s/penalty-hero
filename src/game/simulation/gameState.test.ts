@@ -6,7 +6,7 @@ import {
     serializeRun,
     applyUpgrade
 } from './gameState';
-import { NEXT_SHOT_PROMPT, advanceShotPower, getPowerTiming, getShotConfirmPhase, getShotSpreadOffset, getShotSpreadRadius, getResultConfirmAction } from './shotFlow';
+import { NEXT_SHOT_PROMPT, advanceShotPower, formatShotReachSummary, getPowerTiming, getShotConfirmPhase, getShotSpreadOffset, getShotSpreadRadius, getResultConfirmAction } from './shotFlow';
 import { UPGRADES } from './upgrades';
 
 const assert = {
@@ -49,6 +49,26 @@ const main = () => {
         assert.ok(result.keeperDive < 0);
         assert.ok(result.readDistance < result.saveReach);
         assert.match(result.explanation, /reached/);
+    });
+
+    test('explains goals inside keeper reach as missed saves, not outside reach', () => {
+        const run = createRun('Brazil', () => 0.25);
+        const keeper = { ...run.currentOpponent.keeper, tendency: 'patient' as const, skill: 0.45, patience: 1 };
+        const shot = { direction: 0, height: 0.52, power: 0.72, accuracy: 1, curve: 0, timing: 1 };
+        const rolls = [0, 0, 0.5, 0.99];
+        let index = 0;
+
+        const result = resolvePlayerShot(run, shot, keeper, () => rolls[index++] ?? 0.99);
+
+        assert.equal(result.goal, true);
+        assert.ok(result.readDistance < result.saveReach);
+        assert.match(result.explanation, /missed the save/i);
+    });
+
+    test('formats goal reach summaries without impossible gap comparisons', () => {
+        const summary = formatShotReachSummary({ offTarget: false, saved: false, goal: true, readDistance: 0.03, saveReach: 0.34 });
+
+        assert.equal(summary, 'GOAL: keeper missed gap 3 < reach 34');
     });
 
     test('advances after a won shootout and offers upgrades', () => {
